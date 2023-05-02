@@ -19,6 +19,14 @@ resource "aws_security_group" "example" {
   }
 
   ingress {
+    description = "Allow HTTP"
+    from_port   = 9000
+    to_port     = 9000
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
     description = "Allow HTTPS"
     from_port   = 443
     to_port     = 443
@@ -30,6 +38,14 @@ resource "aws_security_group" "example" {
     description = "Allow application traffic"
     from_port   = 8080
     to_port     = 8080
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow application traffic"
+    from_port   = 8088
+    to_port     = 8088
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -76,6 +92,18 @@ resource "aws_subnet" "private" {
     Name = "private"
   }
 }
+
+# Private subnet
+resource "aws_subnet" "private2" {
+  vpc_id            = aws_vpc.example.id
+  cidr_block        = "10.0.8.0/24"
+  availability_zone = "ap-northeast-2b"
+
+  tags = {
+    Name = "private-2"
+  }
+}
+
 
 # Internet Gateway
 resource "aws_internet_gateway" "example" {
@@ -140,15 +168,20 @@ resource "aws_route_table_association" "public2" {
   route_table_id = aws_route_table.public.id
 }
 
-
 # Associate private subnet with private route table
 resource "aws_route_table_association" "private" {
   subnet_id      = aws_subnet.private.id
   route_table_id = aws_route_table.private.id
 }
 
-# Load Balancer
+# Associate private subnet with private route table
+resource "aws_route_table_association" "private2" {
+  subnet_id      = aws_subnet.private2.id
+  route_table_id = aws_route_table.private.id
+}
 
+
+# Load Balancer
 resource "aws_lb" "example" {
   name               = "example-lb"
   internal           = false
@@ -158,46 +191,121 @@ resource "aws_lb" "example" {
 
 }
 
+# todo Load Balancer
+# resource "aws_lb" "example2" {
+#   name               = "todo-example-lb"
+#   internal           = false
+#   load_balancer_type = "application"
+#   security_groups    = [aws_security_group.example.id]
+#   subnets            = [aws_subnet.private.id, aws_subnet.private2.id]
+# }
+
 # 80 리스너 생성
-resource "aws_lb_listener" "example" {
+# resource "aws_lb_listener" "example" {
+#   load_balancer_arn = aws_lb.example.arn
+#   port              = 80
+#   protocol          = "HTTP"
+
+#   default_action {
+#     target_group_arn = aws_lb_target_group.example.arn
+#     type             = "forward"
+#   }
+#   depends_on = [aws_lb_target_group.example]
+# }
+
+# 8088 리스너 생성
+# resource "aws_lb_listener" "example2" {
+#   load_balancer_arn = aws_lb.example.arn
+#   port              = 8088
+#   protocol          = "HTTP"
+
+#   default_action {
+#     target_group_arn = aws_lb_target_group.example2.arn
+#     type             = "forward"
+#   }
+#   depends_on = [aws_lb_target_group.example2]
+# }
+
+# 9000 리스너 생성
+resource "aws_lb_listener" "example3" {
   load_balancer_arn = aws_lb.example.arn
-  port              = 80
+  port              = 9000
   protocol          = "HTTP"
 
   default_action {
-    target_group_arn = aws_lb_target_group.example.arn
+    target_group_arn = aws_lb_target_group.example3.arn
     type             = "forward"
   }
-  depends_on = [aws_lb_target_group.example]
-}
-
-# 8080 리스너 생성
-resource "aws_lb_listener" "example2" {
-  load_balancer_arn = aws_lb.example.arn
-  port              = 8080
-  protocol          = "HTTP"
-
-  default_action {
-    target_group_arn = aws_lb_target_group.example2.arn
-    type             = "forward"
-  }
-  depends_on = [aws_lb_target_group.example2]
+  depends_on = [aws_lb_target_group.example3]
 }
 
 # 80 타겟그룹 생성
-resource "aws_lb_target_group" "example" {
-  name_prefix = "ecs-tg"
+# resource "aws_lb_target_group" "example" {
+#   name_prefix = "ecs-tg"
 
-  port        = 80
+#   port        = 80
+#   protocol    = "HTTP"
+#   vpc_id      = aws_vpc.example.id
+#   # vpc_id      = data.aws_vpc.default.id
+#   target_type = "ip" 
+
+#   health_check {
+#     enabled             = true
+#     interval            = 300
+#     path                = "/"
+#     timeout             = 60
+#     matcher             = "200"
+#     healthy_threshold   = 5
+#     unhealthy_threshold = 5
+#   }
+
+#   lifecycle {
+#     create_before_destroy = true
+#   }
+
+#   depends_on = [aws_lb.example]
+# }
+
+# 8088 타겟그룹 생성
+# resource "aws_lb_target_group" "example2" {
+#   name_prefix = "ecstg2"
+
+#   port        = 8088
+#   protocol    = "HTTP"
+#   vpc_id      = aws_vpc.example.id
+#   target_type = "ip" 
+
+#   health_check {
+#     enabled             = true
+#     interval            = 300
+#     path                = "/actuator/gateway/routes"
+#     matcher             = "200"
+#     timeout             = 60
+#     healthy_threshold   = 5
+#     unhealthy_threshold = 5
+#   }
+
+#   lifecycle {
+#     create_before_destroy = true
+#   }
+
+#   depends_on = [aws_lb.example]
+# }
+
+
+# 9000 타겟그룹 생성
+resource "aws_lb_target_group" "example3" {
+  name_prefix = "ecstg3"
+
+  port        = 9000
   protocol    = "HTTP"
   vpc_id      = aws_vpc.example.id
-  # vpc_id      = data.aws_vpc.default.id
   target_type = "ip" 
 
   health_check {
     enabled             = true
     interval            = 300
-    path                = "/"
+    path                = "/apis/todos"
     timeout             = 60
     matcher             = "200"
     healthy_threshold   = 5
@@ -211,32 +319,27 @@ resource "aws_lb_target_group" "example" {
   depends_on = [aws_lb.example]
 }
 
-# 8080 타겟그룹 생성
-resource "aws_lb_target_group" "example2" {
-  name_prefix = "ecstg2"
+# # gateway 리스너 룰
+# resource "aws_lb_listener_rule" "example2" {
+#   listener_arn = aws_lb_listener.example2.arn
+#   priority     = 100
 
-  port        = 8080
-  protocol    = "HTTP"
-  vpc_id      = aws_vpc.example.id
-  # vpc_id      = data.aws_vpc.default.id
-  target_type = "ip" 
+#   action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.example2.arn
+#   }
+# }
 
-  health_check {
-    enabled             = true
-    interval            = 300
-    path                = "/"
-    timeout             = 60
-    matcher             = "200"
-    healthy_threshold   = 5
-    unhealthy_threshold = 5
-  }
+# # todo 리스너 룰
+# resource "aws_lb_listener_rule" "example3" {
+#   listener_arn = aws_lb_listener.example3.arn
+#   priority     = 100
 
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  depends_on = [aws_lb.example]
-}
+#   action {
+#     type             = "forward"
+#     target_group_arn = aws_lb_target_group.example3.arn
+#   }
+# }
 
 
 
@@ -259,66 +362,99 @@ resource "aws_ecs_cluster_capacity_providers" "example" {
 }
 
 # Service
-resource "aws_ecs_service" "example" {
-  name             = "example-service"
+# resource "aws_ecs_service" "example" {
+#   name             = "example-service"
+#   cluster          = aws_ecs_cluster.example.id
+#   task_definition  = aws_ecs_task_definition.example.arn
+#   desired_count    = 1
+#   platform_version = "LATEST"
+#   # launch_type      = "FARGATE"
+
+#   capacity_provider_strategy {
+#     capacity_provider = "FARGATE"
+#     weight            = 50
+#     base              = 1
+#   }
+
+#   load_balancer {
+#     target_group_arn = aws_lb_target_group.example.arn
+#     container_name   = "nginx-container"
+#     container_port   = 80
+#   }
+
+#   network_configuration {
+#     subnets         = [aws_subnet.private.id]
+#     security_groups = [aws_security_group.example.id]
+#     assign_public_ip = true
+#   }
+  
+#   depends_on = [
+#     aws_ecs_task_definition.example,
+#     aws_lb.example
+#   ] 
+# }
+
+# gateway - service
+# resource "aws_ecs_service" "example2" {
+#   name             = "gateway-service"
+#   cluster          = aws_ecs_cluster.example.id
+#   task_definition  = aws_ecs_task_definition.example2.arn
+#   desired_count    = 1
+#   platform_version = "LATEST"
+
+#   capacity_provider_strategy {
+#     capacity_provider = "FARGATE"
+#     weight            = 50
+#     base              = 1
+#   }
+
+#   load_balancer {
+#     target_group_arn = aws_lb_target_group.example2.arn
+#     container_name   = "api-gateway"
+#     container_port   = 8088
+#   }
+
+#   network_configuration {
+#     subnets         = [aws_subnet.private.id]
+#     security_groups = [aws_security_group.example.id]
+#     assign_public_ip = true
+#   }
+  
+#   depends_on = [
+#     aws_ecs_task_definition.example2,
+#     aws_lb.example
+#   ] 
+# }
+
+
+# todo - service
+resource "aws_ecs_service" "example3" {
+  name             = "ssp-bootstrap"
   cluster          = aws_ecs_cluster.example.id
-  task_definition  = aws_ecs_task_definition.example.arn
+  task_definition  = aws_ecs_task_definition.example3.arn
   desired_count    = 1
   platform_version = "LATEST"
-  # launch_type      = "FARGATE"
 
   capacity_provider_strategy {
     capacity_provider = "FARGATE"
-    weight            = 50
+    weight            = 100
     base              = 1
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.example.arn
-    container_name   = "example-container"
-    container_port   = 80
+    target_group_arn = aws_lb_target_group.example3.arn
+    container_name   = "ssp-bootstrap"
+    container_port   = 9000
   }
 
   network_configuration {
-    subnets         = [aws_subnet.private.id]
+    subnets         = [aws_subnet.private.id, aws_subnet.private2.id]
     security_groups = [aws_security_group.example.id]
     assign_public_ip = true
   }
   
   depends_on = [
-    aws_ecs_task_definition.example,
-    aws_lb.example
-  ] 
-}
-
-# service 2
-resource "aws_ecs_service" "example2" {
-  name             = "example-service-2"
-  cluster          = aws_ecs_cluster.example.id
-  task_definition  = aws_ecs_task_definition.example2.arn
-  desired_count    = 1
-  platform_version = "LATEST"
-
-  capacity_provider_strategy {
-    capacity_provider = "FARGATE"
-    weight            = 50
-    base              = 1
-  }
-
-  load_balancer {
-    target_group_arn = aws_lb_target_group.example2.arn
-    container_name   = "log-example-container"
-    container_port   = 8080
-  }
-
-  network_configuration {
-    subnets         = [aws_subnet.private.id]
-    security_groups = [aws_security_group.example.id]
-    assign_public_ip = true
-  }
-  
-  depends_on = [
-    aws_ecs_task_definition.example2,
+    aws_ecs_task_definition.example3,
     aws_lb.example
   ] 
 }
@@ -332,18 +468,18 @@ resource "aws_ecs_task_definition" "example" {
 
   container_definitions = jsonencode([
     {
-      name        = "example-container"
+      name        = "nginx-container"
       image       = "nginx:latest"
       essential   = true
 
-      log_configuration = {
-        log_driver = "awslogs"
-        options    = {
-          "awslogs-group"         = "/ecs/myapp"
-          "awslogs-region"        = "ap-northeast-2"
-          "awslogs-stream-prefix" = "ecs"
-        }
-      }
+      # log_configuration = {
+      # log_driver = "awslogs"
+      #   options    = {
+      #     "awslogs-group"         = "nginx-log-group"
+      #     "awslogs-stream"        = "nging-log-stream"
+      #     "awslogs-region"        = "ap-northeast-2"
+      #   }
+      # }
       
       portMappings = [
         {
@@ -363,28 +499,28 @@ resource "aws_ecs_task_definition" "example" {
 
 
 resource "aws_ecs_task_definition" "example2" {
-  family                   = "my-task"
+  family                   = "gateway-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
 
   container_definitions = jsonencode([
     {
-      name  = "log-example-container"
-      image = "amazon/awslogs:latest"
+      name  = "api-gateway"
+      image = "038795414938.dkr.ecr.ap-northeast-2.amazonaws.com/api-gateway:latest"
 
-      log_configuration = {
-        log_driver = "awslogs"
-        options = {
-          "awslogs-region"        = "ap-northeast-2"
-          "awslogs-group"         = "my-log-group"
-          "awslogs-stream-prefix" = "my-stream-prefix"
-        }
-      }
+      # log_configuration = {
+      # log_driver = "awslogs"
+      #   options    = {
+      #     "awslogs-group"         = aws_cloudwatch_log_group.app_log_group.name
+      #     "awslogs-stream"        = aws_cloudwatch_log_stream.gateway-stream.name
+      #     "awslogs-region"       = "ap-northeast-2"
+      #   }
+      # }
 
       portMappings = [
         {
-          containerPort = 8080
-          hostPort      = 8080
+          containerPort = 8088
+          hostPort      = 8088
           protocol      = "tcp"
         }
       ]
@@ -398,6 +534,50 @@ resource "aws_ecs_task_definition" "example2" {
   execution_role_arn = aws_iam_role.ecs_task.arn
   task_role_arn = aws_iam_role.ecs_task.arn
 }
+
+#todo
+resource "aws_ecs_task_definition" "example3" {
+  family                   = "todo-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+
+  container_definitions = jsonencode([
+    {
+      name  = "ssp-bootstrap"
+      image = "038795414938.dkr.ecr.ap-northeast-2.amazonaws.com/ssp-bootstrap:latest"
+      # image = "038795414938.dkr.ecr.ap-northeast-2.amazonaws.com/api-gateway:latest"
+
+
+      # log_configuration = {
+      # log_driver = "awslogs"
+      #   options    = {
+      #     "awslogs-group"         = aws_cloudwatch_log_group.app_log_group.name
+      #     "awslogs-stream"        = aws_cloudwatch_log_stream.todo-stream.name
+      #     "awslogs-region"        = "ap-northeast-2"
+      #   }
+      # }
+
+      portMappings = [
+        {
+          # containerPort = 8088
+          containerPort = 9000
+          # hostPort      = 8088
+          hostPort      = 9000
+          protocol      = "tcp"
+        }
+      ]
+
+      essential = true
+    }
+  ])
+
+  cpu = "2048"
+  memory = "4096"
+  execution_role_arn = aws_iam_role.ecs_task.arn
+  task_role_arn = aws_iam_role.ecs_task.arn
+}
+
+# $ aws logs describe-log-groups --log-group-name-prefix /ecs/my-cluster/ssp-bootstrap
 
 
 resource "aws_iam_role" "ecs_task" {
@@ -451,15 +631,23 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_logs_policy_attachment" {
 
 
 resource "aws_cloudwatch_log_group" "app_log_group" {
-  name = "/ecs/myapp"
+  name = "my-gateway-group"
   retention_in_days = 14
 }
 
 resource "aws_cloudwatch_log_group" "app_log_group2" {
-  name = "my-log-group"
+  name = "my-todo-group"
   retention_in_days = 14
 }
 
-output "ecs_service_url" {
-  value = "${aws_lb_target_group.example.arn}"
+resource "aws_cloudwatch_log_stream" "gateway-stream" {
+  name            = "my-gateway-group-stream"
+  log_group_name  = aws_cloudwatch_log_group.app_log_group.name
+  depends_on      = [aws_cloudwatch_log_group.app_log_group]
+}
+
+resource "aws_cloudwatch_log_stream" "todo-stream" {
+  name            = "my-todo-group-stream"
+  log_group_name  = aws_cloudwatch_log_group.app_log_group2.name
+  depends_on      = [aws_cloudwatch_log_group.app_log_group2]
 }
