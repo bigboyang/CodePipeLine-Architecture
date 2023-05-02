@@ -1,4 +1,5 @@
-env   = "dev"
-name  = "jenkins"
-owner = "dj.kim"
+env   = "temp"
+name  = "temp"
+owner = "kkc"
 tags  = {}
+
