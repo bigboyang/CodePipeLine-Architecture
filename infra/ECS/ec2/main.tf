@@ -20,6 +20,14 @@ resource "aws_security_group" "example" {
 
   ingress {
     description = "Allow HTTP"
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow HTTP"
     from_port   = 9000
     to_port     = 9000
     protocol    = "tcp"
@@ -180,9 +188,9 @@ resource "aws_route_table_association" "private2" {
   route_table_id = aws_route_table.private.id
 }
 
-data "template_file" "userdata" {
-  template = file("templates/userdata.sh")
-}
+# data "template_file" "userdata" {
+#   template = file("templates/userdata.sh")
+# }
 
 data "aws_ami" "this" {
   most_recent = true
@@ -214,7 +222,12 @@ module "ec2" {
   availability_zone           = "ap-northeast-2a"
   subnet_id                   = aws_subnet.public.id
   vpc_security_group_ids      = [aws_security_group.example.id]
-  user_data                   = data.template_file.userdata.rendered
+  # user_data                   = data.template_file.userdata.rendered
+
+  user_data = <<-EOF
+              #!/bin/bash
+              echo ECS_CLUSTER=${aws_ecs_cluster.ec2_cluster.arn} >> /etc/ecs/ecs.config
+              EOF
 
   tags = {
     Name = "temp-server"
@@ -241,3 +254,149 @@ module "ec2-bastian" {
   }
 }
 
+
+# ALB
+resource "aws_lb" "alb" {
+  name            = "temp-my-alb"
+  internal        = false
+  load_balancer_type = "application"
+  security_groups = [aws_security_group.example.id]
+  subnets         = [aws_subnet.public.id, aws_subnet.public2.id]
+
+  tags = {
+    Name = "my-alb"
+  }
+}
+
+# Target Group for ECS Service
+resource "aws_lb_target_group" "ecs_target_group" {
+  name_prefix = "temptg"
+  port        = 8088
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.example.id
+
+  tags = {
+    Name = "temp-ecs-tg"
+  }
+}
+
+# ECS Cluster
+resource "aws_ecs_cluster" "ec2_cluster" {
+  name = "temp-ec2-cluster"
+}
+
+# Auto Scaling Group Launch Configuration
+resource "aws_launch_configuration" "ec2_cluster_lc" {
+  name_prefix   = "temp-ec2-cluster-lc-"
+  image_id      = data.aws_ami.this.id
+  instance_type = "t3.micro"
+  key_name      = "dev" # 키페어 이름 지정
+  security_groups = [
+    aws_security_group.example.id,
+  ]
+  user_data = <<-EOF
+              #!/bin/bash
+              echo ECS_CLUSTER=${aws_ecs_cluster.ec2_cluster.arn} >> /etc/ecs/ecs.config
+              EOF
+}
+
+# Auto Scaling Group
+resource "aws_autoscaling_group" "ec2_cluster_asg" {
+  name = "ec2-cluster-asg"
+
+  vpc_zone_identifier = [aws_subnet.public.id,aws_subnet.public2.id]
+  launch_configuration = aws_launch_configuration.ec2_cluster_lc.name
+  # availability_zones        = ["ap-northeast-2a", "ap-northeast-2c"]
+
+  min_size             = 1
+  max_size             = 2
+  desired_capacity     = 2
+  
+
+  target_group_arns = [
+    aws_lb_target_group.ecs_target_group.arn
+  ]
+
+   tags = [
+    {
+      key                 = "Name"
+      value               = "ec2-cluster-asg"
+      propagate_at_launch = true
+    },
+  ]
+}
+
+resource "aws_ecs_capacity_provider" "my_cluster_cp" {
+  name           = "my-cluster-cp"
+  auto_scaling_group_provider {
+    auto_scaling_group_arn = aws_autoscaling_group.ec2_cluster_asg.arn
+    managed_scaling {
+      maximum_scaling_step_size = 2
+      minimum_scaling_step_size = 1
+      status                    = "ENABLED"
+      target_capacity           = 50
+    }
+  }
+  tags = {
+    Name = "My Cluster Capacity Provider"
+  }
+}
+
+
+
+
+
+
+
+
+# # 오로라 서브넷 그룹
+# resource "aws_db_subnet_group" "aurora_subnet_group" {
+#   name       = "temp-aurora-subnet-group"
+#   subnet_ids = [aws_subnet.private.id, aws_subnet.private2.id]
+
+#   tags = {
+#     Name = "temp-aurora-subnet-group"
+#   }
+# }
+
+
+# resource "aws_rds_cluster" "aurora_cluster" {
+#   cluster_identifier         = "aurora-cluster"
+#   engine                     = "aurora"
+#   engine_mode                = "serverless"
+#   engine_version             = "5.6.10a"
+#   database_name              = "mydb"
+#   master_username            = "admin"
+#   master_password            = "mypassword"
+#   skip_final_snapshot        = true
+#   backup_retention_period    = 7
+#   preferred_backup_window    = "07:00-09:00"
+#   preferred_maintenance_window = "mon:05:00-mon:06:00"
+
+#   scaling_configuration {
+#     auto_pause = true
+#     max_capacity = 2
+#     min_capacity = 1
+#     seconds_until_auto_pause = 300
+#   }
+
+#   tags = {
+#     Name = "aurora-serverless-cluster"
+#   }
+# }
+
+# resource "aws_security_group" "aurora_cluster_sg" {
+#   name_prefix = "temp-aurora-cluster-sg"
+#   vpc_id = aws_vpc.example.id
+
+#   ingress {
+#     from_port   = 3306
+#     to_port     = 3306
+#     protocol    = "tcp"
+#     cidr_blocks = [aws_vpc.example.cidr_block]
+#   }
+
+#   tags = {
+#     Name = "temp-aurora-cluster-sg"
+#   }
+# }
